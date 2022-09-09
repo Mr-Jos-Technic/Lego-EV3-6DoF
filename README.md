@@ -23,6 +23,8 @@ Current setup video:
 - Left brick (master program, has different programs for normal fixed points movements, and a PS4 controlled program)
 - Right brick (slave program that is the same for all kind of modes, it just executes the master commands and sends back position feedback)
 
+# I did not program this model for a long time, I have no idea what I did exactly anymore to get it working better/faster, and which left side program works best.
+
 PS4 controller part written by Anton's Mindstorms (Copyright (c) 2021 Anton's Mindstorms)
 
 All my programs/machines are just made for fun and demonstrating what plastic bricks are capable of doing.  
