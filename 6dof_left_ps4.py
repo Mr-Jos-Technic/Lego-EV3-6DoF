@@ -1,17 +1,16 @@
 #!/usr/bin/env pybricks-micropython
 from pybricks.hubs import EV3Brick
-from pybricks.ev3devices import (Motor, TouchSensor, ColorSensor,
-                                 InfraredSensor, UltrasonicSensor, GyroSensor)
-from pybricks.parameters import Port, Stop, Direction, Button, Color
-from pybricks.tools import wait, StopWatch, DataLog
-from pybricks.robotics import DriveBase
-from pybricks.media.ev3dev import SoundFile, Image, ImageFile, Font
-from pybricks.messaging import BluetoothMailboxServer, BluetoothMailboxClient, LogicMailbox, NumericMailbox, TextMailbox
+from pybricks.ev3devices import (Motor, TouchSensor,
+                                 InfraredSensor)
+from pybricks.parameters import Port, Stop, Button, Color
+from pybricks.tools import wait, StopWatch
+from pybricks.messaging import BluetoothMailboxServer, NumericMailbox, TextMailbox
 from threading import Thread
 from random import choice
 from math import fmod
 import sys
 import os
+import time
 import math
 import struct
 
@@ -59,7 +58,7 @@ pitch_base_zeroing = -1860   # -850  31/01/2021  -1930 on 6/05/2021  -1880 on 8/
 pitch_arm_zeroing  =   550   # -255 originally, -225 on 19/01/2021 530 on 5/05/2021
 roll_arm_zeroing   =   885   #  855  31/01/2021
 yaw_arm_zeroing    = -1120   #-1120  31/01/2021
-roll_head_zeroing  =  -150   #   50   6/05/2021  Will be send by BT -50 13/11/2021
+roll_head_zeroing  =  -50    #   50   6/05/2021  Will be send by BT -50 13/11/2021
 
 roll_head_zeroing_pitch_base_angle = 33         #Angle in degrees to tip forward to reach the color sensor with the head
 roll_head_zeroing_pitch_arm_angle  = 77         #Angle in degrees to tip forward to reach the color sensor with the head ###78###
@@ -99,7 +98,6 @@ yaw_arm.control.limits(   800, 3600, 100)   #800, 3600, 100
 max_speed = 700   #Override for Maximum speed for all joints. (700)
 step = 4          #Distance in mm for each step in Inverse Kinematic mode, lower = more accurate but might start shaking due to slow calculations
 
-
 ##########~~~~~~~~~~MAXIMUM ACCELERATION AND MAXIMUM ANGLE TO SAY A MOVEMENT IS FINISHED~~~~~~~~~~##########
 pitch_base.control.target_tolerances(1000, 10)   #Allowed deviation from the target before motion is considered complete. (degrees/second, degrees) (1000, 10)
 pitch_arm.control.target_tolerances( 1000, 10)   #Allowed deviation from the target before motion is considered complete. (degrees/second, degrees) (1000, 10)
@@ -124,8 +122,6 @@ roll_head_feedb = NumericMailbox('roll head feedback', server)       #Mailbox wi
 timer_movement = StopWatch()   #Create timer
 #timer_movement.pause()        #Stop the timer (do not stop it use a # infront, this is for debugging only)
 timer_movement.reset()         #Put timer back at 0, if not stopped it will just keep running but start from 0 again.
-timer_remote = StopWatch()
-timer_remote.reset()
 
 
 ##########~~~~~~~~~~BUILDING GLOBAL VARIABLES~~~~~~~~~~##########
@@ -146,20 +142,8 @@ tracking = True
 
 ##########~~~~~~~~~~BRICK STARTUP SETTINGS~~~~~~~~~~##########
 ev3.speaker.set_volume(volume=80, which='_all_')   #Set the volume for all sounds (speaking and beeps etc)
-ev3.speaker.set_speech_options(language='en', voice='m7', speed=None, pitch=None)   #Select speaking language, and a voice (male/female)
-small_font = Font(size=6)       # 6 pixel height for text on screen
-normal_font = Font(size=10)     #10 pixel height for text on screen
-big_font = Font(size=16)        #16 pixel height for text on screen
-ev3.screen.set_font(big_font)   #Choose a preset font for writing next texts
-ev3.screen.clear()              #Make the screen empty (all pixels white)
 ev3.speaker.beep()              #Brick will make a beep sound 1 time
-ev3.light.off()                 #Turn the lights off on the brick
-ev3.screen.draw_text(4,  2, "yaw base angle: ")     #X/Y position for writing on the screen
-ev3.screen.draw_text(4, 20, "pitch base angle: ")   
-ev3.screen.draw_text(4, 38, "pitch arm angle: ")    
-ev3.screen.draw_text(4, 56, "roll arm angle: ")
-ev3.screen.draw_text(4, 74, "yaw arm angle: ")
-ev3.screen.draw_text(4, 92, "roll head angle: ")
+ev3.light.on(Color.RED)                 #Turn the lights off on the brick
 
 
 ##########~~~~~~~~~~CREATING A FILE THAT IS SAVED OFFLINE~~~~~~~~~~##########
@@ -232,7 +216,12 @@ def next_pos(x_pos, y_pos, z_pos, roll, pitch, yaw, maxspeed):
     
     #Find the first 3 thetas
     theta1 = math.degrees(math.atan2(y_wrist, x_wrist))
-    theta3 = 180 - math.degrees(math.acos(((a2 ** 2) + (a345 **2) - (a15 ** 2)) / (2 * a2 * a345))) - phi345
+    try:
+        theta3 = 180 - math.degrees(math.acos(((a2 ** 2) + (a345 **2) - (a15 ** 2)) / (2 * a2 * a345))) - phi345
+    except ValueError:
+        print('ValueError while calculating theta3 with values: a2 {}, a345 {}, a15 {}, phi345 {}'.format(a2, a345, a15, phi345))
+        return
+
     theta2 = math.degrees(math.asin((z_wrist - a1) / a15)) + math.degrees(math.acos(((a2 ** 2) + (a15 ** 2) - (a345 ** 2)) / (2 * a2 * a15))) - 90
     theta32 = theta3 - theta2   #General angle for the pitch
     
@@ -455,15 +444,17 @@ server.wait_for_connection(1)   #Always start this server-brick first. Then star
 
 
 ##########~~~~~~~~~~POSSIBLE MANUAL CONTROL WITH BEACON FOR GOING TO SAFE POSITION FOR HOMING~~~~~~~~~~##########
-while True:
-    if infra_remote.buttons(1) == []:
-        pitch_base.hold()
-        pitch_arm.hold()
-    elif infra_remote.buttons(1) == [Button.LEFT_UP]: pitch_base.run(200 * th2_switch)
-    elif infra_remote.buttons(1) == [Button.LEFT_DOWN]: pitch_base.run(-200 * th2_switch)
-    elif infra_remote.buttons(1) == [Button.RIGHT_UP]: pitch_arm.run(-200 * th3_switch)
-    elif infra_remote.buttons(1) == [Button.RIGHT_DOWN]: pitch_arm.run(200 * th3_switch)
-    elif infra_remote.buttons(1) == [Button.BEACON]: break
+# hold LEFT_UP on remote during startup to enter manual calibration mode
+if infra_remote.buttons(1) == [Button.LEFT_UP]:
+    while True:
+        if infra_remote.buttons(1) == []:
+            pitch_base.hold()
+            pitch_arm.hold()
+        elif infra_remote.buttons(1) == [Button.LEFT_UP]: pitch_base.run(200 * th2_switch)
+        elif infra_remote.buttons(1) == [Button.LEFT_DOWN]: pitch_base.run(-200 * th2_switch)
+        elif infra_remote.buttons(1) == [Button.RIGHT_UP]: pitch_arm.run(-200 * th3_switch)
+        elif infra_remote.buttons(1) == [Button.RIGHT_DOWN]: pitch_arm.run(200 * th3_switch)
+        elif infra_remote.buttons(1) == [Button.BEACON]: break
 pitch_base.hold()
 pitch_arm.hold()
 
@@ -563,6 +554,9 @@ pitch_arm.run_target(800, pitch_arm_full_rot / 360 * roll_head_zeroing_pitch_arm
 commands_bt_text.send('Initiate roll head')     #Send the command for homing theta6 
 while commands_bt_text.read() != 'Initiated roll head':
     continue                                    #Check if theta6 has finished homing
+
+print('roll head calibrated, wait a bit...')
+wait(500)
 roll_head_bt_num.send(0)                        #Theta6 go to position 0°
 
 
@@ -575,6 +569,7 @@ yaw_base_bt_num.send(0)
 find_position()
 wait(500)
 
+ev3.light.on(Color.ORANGE)
 #ev3.speaker.say("All motor positions at 0 degrees")
 
 
@@ -601,18 +596,33 @@ wait(500)
 #THETAS [1: +Counter-clockwise from top; 2: +lean backwards; 3: +tip forward; 4: +clockwise from rear; 5: +tip down to zero-point arm; 6: +clockwise from rear]
 
 
+# write to disk for later replay feature
+def write_positions_to_storage(remote_positions):
+    positions_file = 'positions-{}.csv'.format(int(time.time()))
+    with open(positions_file, 'w') as positions_file_handle:
+        positions_file_handle.write('#x,y,z,roll,pitch,yaw\n')
+        for i in range(remote_positions):
+            positions_file_handle.write('{},{},{},{},{},{}\n'.format(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1]))
+
+    print('Positions saved in file {}'.format(positions_file))
+
+def read_positions_from_storage(positions_file):
+    print('Replaying positions from {}...'.format(positions_file))
+    with open(positions_file, 'r') as positions_file_handle:
+        for line in positions_file_handle.readlines():
+            if not line.startswith('#'):
+                line_metrics = line.split(',')
+                next_coordinate_linear(int(line_metrics[0]), int(line_metrics[1]), int(line_metrics[2]), int(line_metrics[3]), int(line_metrics[4]), int(line_metrics[5]), max_speed)
+                wait(1000)
+
 
 ##########~~~~~~~~~~PS4 CONTROL FOR TEACHING AND STARTING PROGRAM~~~~~~~~~~##########
 ##########################################################################
 ##########~~~~~~~~~~THANKS TO ANTON'S MINDSTORMS HACKS~~~~~~~~~~##########
 ##########~~~~~~~~~~https://antonsmindstorms.com/     ~~~~~~~~~~##########
 ##########################################################################
-infile_path = "/dev/input/event4"
-in_file = open(infile_path, "rb")
 
-FORMAT = 'llHHI'    
-EVENT_SIZE = struct.calcsize(FORMAT)
-event = in_file.read(EVENT_SIZE)
+# wait(1000)
 
 find_position()
 x_remote = x_pos_fork
@@ -629,135 +639,101 @@ roll_list = [0]
 pitch_list = [0]
 yaw_list = [0]
 
-sub_track_remote.start()
 
-while event:
-    (tv_sec, tv_usec, ev_type, code, value) = struct.unpack(FORMAT, event)
-    
-    #type1 push button 0/1:
-    # 544 arrow up       17
-    # 546 arrow left     16
-    # 545 arrow down     17
-    # 547 arrow right    16
-    # 314 select
-    # 316 middle button
-    # 315 start button
-    # 307 triangle
-    # 308 square
-    # 304 cross
-    # 305 circle
-    # 317 left joystick pushdown
-    # 318 right joystick pushdown
-    # 310 L1
-    # 311 R1
-    # 312 L2
-    # 313 R2
+# check if we are entering remote control mode or replay positions from CSV file
+if len(sys.argv) > 1:
+    read_positions_from_storage(sys.argv[1])
+else:
+    sub_track_remote.start()
 
-    #type3 analog 0-255:
-    # 0 left joystick X-axis
-    # 1 left joystick Y-axis
-    # 2 L2 paddle
-    # 3 right joystick X-axis
-    # 4 right joystick Y-axis
-    # 5 R2 paddle
+    infile_path = "/dev/input/event4"
+    try:
+        in_file = open(infile_path, "rb")
+    except OSError:
+        print('Unable to open Wireless Controller using {}'.format(infile_path))
+        sys.exit(1)
 
-    if ev_type == 1: # A button was pressed or released.
-        if code == 304 and value == 0:
-            x_list.append(int(x_remote))
-            y_list.append(int(y_remote))
-            z_list.append(int(z_remote))
-            roll_list.append(int(roll_remote))
-            pitch_list.append(int(pitch_remote))
-            yaw_list.append(int(yaw_remote))
-            remote_positions += 1
-            ev3.speaker.beep()
-        if code == 307 and value == 1:
-            ev3.speaker.beep()
-            ev3.speaker.beep()
-            tracking = False
-            break
-        if code == 310 and value == 0:
-            roll_remote += 3
-        if code == 311 and value == 0:
-            roll_remote -= 3
-        
-    if ev_type == 3: # Stick was moved
-        if code == 0 and (value < 118 or value > 138): # left joystick, x-axis, y+ --- y-
-            y_remote += scale(value, (0,255), (1, -1))
-        if code == 1 and (value < 118 or value > 138): # left joystick, y-axis, x+ --- x-
-            x_remote += scale(value, (0,255), (1, -1))
-        if code == 2 and value > 10: # l2 paddle,             z+
-            z_remote += scale(value, (0,255), (0, 1))
-        if code == 3 and (value < 118 or value > 138): # left joystick, x-axis, yaw left --- yaw right
-            yaw_remote += scale(value, (0,255), (1, -1))
-        if code == 4 and (value < 118 or value > 138): # Righ stick vertical    pitch up --- pitch down
-            pitch_remote += scale(value, (0,255), (1, -1))
-        if code == 5 and value > 10: # r2 paddle,             z-
-            z_remote -= scale(value, (0,255), (0, 1))
-
+    FORMAT = 'llHHI'    
+    EVENT_SIZE = struct.calcsize(FORMAT)
     event = in_file.read(EVENT_SIZE)
 
+    while event:
+        (tv_sec, tv_usec, ev_type, code, value) = struct.unpack(FORMAT, event)
+        
+        #type1 push button 0/1:
+        # 544 arrow up       17
+        # 546 arrow left     16
+        # 545 arrow down     17
+        # 547 arrow right    16
+        # 314 select
+        # 316 middle button
+        # 315 start button
+        # 307 triangle
+        # 308 square
+        # 304 cross
+        # 305 circle
+        # 317 left joystick pushdown
+        # 318 right joystick pushdown
+        # 310 L1
+        # 311 R1
+        # 312 L2
+        # 313 R2
 
-motor_braking()
+        #type3 analog 0-255:
+        # 0 left joystick X-axis
+        # 1 left joystick Y-axis
+        # 2 L2 paddle
+        # 3 right joystick X-axis
+        # 4 right joystick Y-axis
+        # 5 R2 paddle
 
-in_file.close()
+        if ev_type == 1: # A button was pressed or released.
+            if code == 304 and value == 0:
+                x_list.append(int(x_remote))
+                y_list.append(int(y_remote))
+                z_list.append(int(z_remote))
+                roll_list.append(int(roll_remote))
+                pitch_list.append(int(pitch_remote))
+                yaw_list.append(int(yaw_remote))
+                remote_positions += 1
+                ev3.speaker.beep()
+            elif code == 307 and value == 1:
+                ev3.speaker.beep()
+                ev3.speaker.beep()
+                tracking = False
+                break
+            elif code == 310 and value == 0:
+                roll_remote += 3
+            elif code == 311 and value == 0:
+                roll_remote -= 3
+            
+        elif ev_type == 3: # Stick was moved
+            if code == 0 and (value < 118 or value > 138): # left joystick, x-axis, y+ --- y-
+                y_remote += scale(value, (0,255), (1, -1))
+            elif code == 1 and (value < 118 or value > 138): # left joystick, y-axis, x+ --- x-
+                x_remote += scale(value, (0,255), (1, -1))
+            elif code == 2 and value > 10: # l2 paddle,             z+
+                z_remote += scale(value, (0,255), (0, 1))
+            elif code == 3 and (value < 118 or value > 138): # left joystick, x-axis, yaw left --- yaw right
+                yaw_remote += scale(value, (0,255), (1, -1))
+            elif code == 4 and (value < 118 or value > 138): # Righ stick vertical    pitch up --- pitch down
+                pitch_remote += scale(value, (0,255), (1, -1))
+            elif code == 5 and value > 10: # r2 paddle,             z-
+                z_remote -= scale(value, (0,255), (0, 1))
 
-for i in range(remote_positions):
-    next_coordinate_linear(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1], max_speed)
+        event = in_file.read(EVENT_SIZE)
+
+
+    motor_braking()
+    in_file.close()
+
+
+    write_positions_to_storage(remote_positions)
+
+    for i in range(remote_positions):
+        next_coordinate_linear(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1], max_speed)
+
 
 motor_braking()
 ev3.speaker.beep()
-wait(10000000)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-##########~~~~~~~~~~PARTS OF CODE FOR TESTING AND DEBUGGING~~~~~~~~~~##########
-#Measurement control, move lineair for 10centimeter
-next_coordinate_linear(200, 10, 400, 0, 0, 0, 800)
-#wait(15000)
-next_coordinate_linear(200, 10, 300, 0, 0, 0, 800)
-#wait(15000)
-next_coordinate_linear(200, 10, 200, 0, 0, 0, 800)
-#wait(15000)
-next_coordinate_linear(300, 10, 200, 0, 0, 0, 800)
-#wait(15000)
-next_coordinate_linear(300, 10, 100, 0, 0, 0, 800)
-#wait(15000)
-next_coordinate_linear(300, 10, 300, 0, 0, 0, 800)
-#wait(15000)
-next_coordinate_linear(150, 10, 300, 0, 0, 0, 800)
-#wait(1000000)
-
-
-#Showcase 6DoF          X     Y     Z    Roll  Pitch  Yaw  Speed
-next_coordinate_linear( 290,  200,  250,    0,    0,   90, 700)   
-next_coordinate_linear( 290, -200,  250,    0,    0,  -90, 700)
-next_coordinate_linear( 290, -200,  150,    0,    0,    0, 700)
-next_coordinate_linear( 290,    0,  150,    0,    0,    0, 700)
-next_coordinate_linear( 190,    0,  150,    0,   90,    0, 700)
-next_coordinate_linear( 190, -190,  150,    0,   90,    0, 700)
-next_coordinate_linear( 270, -190,  200,    0,    0,    0, 700)
-next_coordinate_linear( 270, -190,  200,  360,    0,    0, 700)
-next_coordinate_linear( 270,  190,  200,    0,    0,    0, 700)
+sys.exit()
