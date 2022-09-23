@@ -1,13 +1,20 @@
 #!/usr/bin/env pybricks-micropython
+import math
+import os
 import sys
+from math import fmod
+from random import choice
 from threading import Thread
 
-from pybricks.ev3devices import ColorSensor, Motor, TouchSensor
+from pybricks.ev3devices import (ColorSensor, GyroSensor, InfraredSensor,
+                                 Motor, TouchSensor, UltrasonicSensor)
 from pybricks.hubs import EV3Brick
-from pybricks.messaging import (BluetoothMailboxClient, NumericMailbox,
-                                TextMailbox)
-from pybricks.parameters import Color, Port
-from pybricks.tools import wait
+from pybricks.media.ev3dev import Font, Image, ImageFile, SoundFile
+from pybricks.messaging import (BluetoothMailboxClient, BluetoothMailboxServer,
+                                LogicMailbox, NumericMailbox, TextMailbox)
+from pybricks.parameters import Button, Color, Direction, Port, Stop
+from pybricks.robotics import DriveBase
+from pybricks.tools import DataLog, StopWatch, wait
 
 # This program requires LEGO EV3 MicroPython v2.0 or higher.
 # Click "Open user guide" on the EV3 extension tab for more information.
@@ -31,6 +38,14 @@ color_roll_head = ColorSensor(Port.S2)
 roll_head.control.limits(1400,3600,100)
 yaw_base.control.limits(1400,1400,100)
 
+timer1 = StopWatch()
+timer1.pause()
+timer1.reset()
+
+small_font = Font(size=6)
+normal_font = Font(size=10)
+big_font = Font(size=16)
+
 client = BluetoothMailboxClient()
 commands_bt_text = TextMailbox('commands text', client)
 roll_head_bt_zeroing = NumericMailbox('zero position roll', client)
@@ -44,9 +59,15 @@ yaw_base_feedb = NumericMailbox('yaw base feedback', client)
 
 
 # Write your program here.
-ev3.speaker.set_volume(volume=80, which='_all_')
 ev3.speaker.beep()
-ev3.light.on(Color.RED)
+ev3.light.off()
+ev3.speaker.set_volume(volume=80, which='_all_')
+ev3.speaker.set_speech_options(language='en', voice='m7', speed=None, pitch=None)
+
+#create_file = open("saveddata.txt", "a")
+#create_file.write("")
+#create_file.close()
+
 
 client.connect(MASTER_BRICK)
 
@@ -63,8 +84,7 @@ def move_roll_head():
     global roll_head
     while True:
         roll_head_bt_num.wait_new()
-        print('received roll head num: {}'.format(roll_head_bt_num.read()))
-        print('current angle: {}'.format(roll_head.angle()))
+        print(roll_head_bt_num.read())
         roll_head.run_target(roll_head_bt_sp.read(), roll_head_bt_num.read(), wait=False)
 
 def control_check():
@@ -109,33 +129,46 @@ commands_bt_text.send('Initiated yaw base')
 while commands_bt_text.read() != 'Initiate roll head':
     wait(100)
 
-
-# already on red, back off a bit for clean calibration
-while color_roll_head.color() == Color.RED:
-    roll_head.run(1400)
+if color_roll_head.color() == Color.RED:
+    while color_roll_head.color() == Color.RED:
+        roll_head.run(1400)
     wait(200)
 
-# start calibrating move
-roll_head.run(-600)
-while color_roll_head.color() != Color.RED:
-    wait(5)
-
-wait(400)
-roll_head.hold()
+while True:
+    while color_roll_head.color() != Color.RED:
+        roll_head.run(-600)
+    roll_head.hold()
+    wait(50)
+    if color_roll_head.color() != Color.RED:
+        continue
+    wait(50)
+    if color_roll_head.color() != Color.RED:
+        continue
+    wait(50)
+    if color_roll_head.color() != Color.RED:
+        continue
+    wait(50)
+    if color_roll_head.color() != Color.RED:
+        continue
+    break 
 
 roll_head.reset_angle(roll_head_bt_zeroing.read())
 
 commands_bt_text.send('Initiated roll head')
 
 wait(500)
-# indicate that we are now calibrated
-ev3.light.on(Color.ORANGE)
 
 while True:
-    try:
-        control_check()
-    except OSError:
-        print('Looks like we lost connection, shutting down slave...')
-        sys.exit(0)
-
+    control_check()
     wait(10)
+
+
+
+
+
+###For debugging use###
+yaw_base.run_target(800, 0)
+wait(500)
+yaw_base.run_target(800, -1050)
+yaw_base.run_target(800, 1050)
+yaw_base.run_target(800, -200)
