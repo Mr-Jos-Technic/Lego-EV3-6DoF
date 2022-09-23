@@ -68,7 +68,7 @@ def move_roll_head():
         roll_head.run_target(roll_head_bt_sp.read(), roll_head_bt_num.read(), wait=False)
 
 def control_check():
-    if yaw_base.control.done() == True and roll_head.control.done() == True:
+    if yaw_base.control.done() and roll_head.control.done():
         commands_bt_text.send("No movement")
         wait(100)
     else:
@@ -93,12 +93,12 @@ sub_angle_feedback.start()
 while commands_bt_text.read() != 'Initiate yaw base':
     wait(100)
 
-if touch_yaw_base.pressed() == True:
-    while touch_yaw_base.pressed() == True:
+if touch_yaw_base.pressed():
+    while touch_yaw_base.pressed():
         yaw_base.run(-200)
     wait(500)
 
-while touch_yaw_base.pressed() != True:
+while not touch_yaw_base.pressed():
     yaw_base.run(200)
 yaw_base.hold()
 yaw_base.reset_angle(yaw_base_bt_zeroing.read())
