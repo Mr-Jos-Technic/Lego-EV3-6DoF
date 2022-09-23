@@ -4,8 +4,7 @@ import math
 import struct
 import sys
 import time
-from math import fmod
-from random import choice
+
 from threading import Thread
 
 import uos
@@ -59,7 +58,10 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     touch_roll_arm = TouchSensor(Port.S3)        #Touch sensor at the end of arm for homing:      theta4
     #                                            #Stall detection used for for homing:            theta5
     #color_roll_head = On Right brick Port.S2    #Color sensor at the front left side for homing: theta6
-    infra_remote = InfraredSensor(Port.S4)      #OPTIONAL: Infrared sensor for manual movements with a remote
+    try:
+        infra_remote = InfraredSensor(Port.S4)      #OPTIONAL: Infrared sensor for manual movements with a remote
+    except:
+        infra_remote = False
 
     th2_switch = -1  #Switching the direction of the motor for theta2     1/-1
     th3_switch = -1  #Switching the direction of the motor for theta3     1/-1
@@ -421,11 +423,8 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
 
     ##########~~~~~~~~~~CREATING MULTITHREADS~~~~~~~~~~##########
-    sub_find_position = Thread(target=find_position)   #Create an instance for multiple threads
-    #sub_find_position.start()                         #Start looping the thread for finding realtime XYZ position in the background (NOT USED)
     sub_track_remote = Thread(target=track_remote)
     sub_move_all_motors = Thread(target=move_all_motors_two)
-
 
     ##########~~~~~~~~~~WAIT UNTIL (1) BLUETOOTH DEVICE IS CONNECTED~~~~~~~~~~##########
     server.wait_for_connection(1)   #Always start this server-brick first. Then start the slave-brick, or it will timeout
@@ -434,7 +433,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
     ##########~~~~~~~~~~POSSIBLE MANUAL CONTROL WITH BEACON FOR GOING TO SAFE POSITION FOR HOMING~~~~~~~~~~##########
     # hold LEFT_UP on remote during startup to enter manual calibration mode
-    if infra_remote.buttons(1) == [Button.LEFT_UP]:
+    if infra_remote and infra_remote.buttons(1) == [Button.LEFT_UP]:
         while True:
             if infra_remote.buttons(1) == []:
                 pitch_base.hold()
