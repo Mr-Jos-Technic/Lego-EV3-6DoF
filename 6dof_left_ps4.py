@@ -657,7 +657,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         try:
             in_file = open(infile_path, "rb")
         except OSError:
-            logger.debug('Unable to open Wireless Controller using {}'.format(infile_path))
+            logger.error('Unable to open Wireless Controller using {}'.format(infile_path))
             sys.exit(1)
 
         FORMAT = 'llHHI'    
