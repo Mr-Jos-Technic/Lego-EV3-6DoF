@@ -4,7 +4,7 @@ import math
 import struct
 import sys
 import time
-import logging
+
 from threading import Thread
 
 import uos
@@ -36,14 +36,11 @@ max_speed = 700   #Override for Maximum speed for all joints. (700)
 old_orientation =  [0, 0, 0]
 next_orientation = [0, 0, 0]
 actuation_list = []
+max_angle =  0
 theta1_rot = 0
 theta4_rot = 0
 theta6_rot = 0
 old_speed = int(max_speed)
-# x_pos_fork = 0
-# y_pos_fork = 0
-# z_pos_fork = 0
-logger = logging.getLogger(__name__)
 
 
 def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None):
@@ -63,8 +60,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     #color_roll_head = On Right brick Port.S2    #Color sensor at the front left side for homing: theta6
     try:
         infra_remote = InfraredSensor(Port.S4)      #OPTIONAL: Infrared sensor for manual movements with a remote
-    except OSError:
-        logger.info('no IR sensor present on port S4, running without it...')
+    except:
         infra_remote = False
 
     th2_switch = -1  #Switching the direction of the motor for theta2     1/-1
@@ -137,8 +133,8 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
     ## auto start script on slave brick if --autoconnect flag is passed
     if auto_start:
-        logger.info('Starting slave script "{}" on host "{}" using SSH...'.format(slave_script, slave_name))
-        with open('/etc/hostname', 'r', encoding='utf-8') as hostname_file:
+        print('Starting slave script "{}" on host "{}" using SSH...'.format(slave_script, slave_name))
+        with open('/etc/hostname', 'r') as hostname_file:
             master_name = hostname_file.readline().strip()
         uos.system('ssh {} brickrun -r -- pybricks-micropython {} {} &'.format(slave_name, slave_script, master_name))
 
@@ -170,12 +166,9 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
     ##########~~~~~~~~~~HOLD MOTOR POSITION WHEN MOVEMENT FINISHED~~~~~~~~~~##########
     def motor_braking():
-        while not pitch_base.control.done() or not pitch_arm.control.done() or not roll_arm.control.done() or not yaw_arm.control.done() or commands_bt_text.read() != "No movement":
-            if pitch_base.control.done():
-                pitch_base.hold()
-            if pitch_arm.control.done():
-                pitch_arm.hold()   
-            
+        while pitch_base.control.done() != True or pitch_arm.control.done() != True or roll_arm.control.done() != True or yaw_arm.control.done() != True or commands_bt_text.read() != "No movement":
+            if pitch_base.control.done() == True: pitch_base.hold()
+            if pitch_arm.control.done() == True: pitch_arm.hold()   
             continue
 
 
@@ -204,13 +197,12 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         motor_braking()
         
         #Send each sub-step XYZ position, orientation and maxspeed
-        if sub_steps <= 0:
-            logger.debug("Position too close to previous end-point")
+        if sub_steps <= 0: print("Position to close to previous end-point")
         else:
             for i in range(-((sub_steps - 1) * step), step, step):
                 next_pos(x_pos - (distance_list[0] / sub_steps) * (sub_steps - step_lineair), y_pos - (distance_list[1] / sub_steps) * (sub_steps - step_lineair), z_pos - (distance_list[2] / sub_steps) * (sub_steps - step_lineair), roll - (step_orientation[0] / sub_steps) * (sub_steps - step_lineair), pitch - (step_orientation[1] / sub_steps) * (sub_steps - step_lineair), yaw - (step_orientation[2] / sub_steps) * (sub_steps - step_lineair), maxspeed)    
                 step_lineair += 1
-                # logger.debug(x_pos - (distance_list[0] / sub_steps) * (sub_steps - step_lineair), y_pos - (distance_list[1] / sub_steps) * (sub_steps - step_lineair), z_pos - (distance_list[2] / sub_steps) * (sub_steps - step_lineair), roll - (step_orientation[0] / sub_steps) * (sub_steps - step_lineair), pitch - (step_orientation[1] / sub_steps) * (sub_steps - step_lineair), yaw - (step_orientation[2] / sub_steps) * (sub_steps - step_lineair), maxspeed)
+                print(x_pos - (distance_list[0] / sub_steps) * (sub_steps - step_lineair), y_pos - (distance_list[1] / sub_steps) * (sub_steps - step_lineair), z_pos - (distance_list[2] / sub_steps) * (sub_steps - step_lineair), roll - (step_orientation[0] / sub_steps) * (sub_steps - step_lineair), pitch - (step_orientation[1] / sub_steps) * (sub_steps - step_lineair), yaw - (step_orientation[2] / sub_steps) * (sub_steps - step_lineair), maxspeed)
 
 
         old_orientation = [roll, pitch, yaw]
@@ -231,7 +223,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         try:
             theta3 = 180 - math.degrees(math.acos(((a2 ** 2) + (a345 **2) - (a15 ** 2)) / (2 * a2 * a345))) - phi345
         except ValueError:
-            logger.debug('ValueError while calculating theta3 with values: a2 {}, a345 {}, a15 {}, phi345 {}'.format(a2, a345, a15, phi345))
+            print('ValueError while calculating theta3 with values: a2 {}, a345 {}, a15 {}, phi345 {}'.format(a2, a345, a15, phi345))
             return
 
         theta2 = math.degrees(math.asin((z_wrist - a1) / a15)) + math.degrees(math.acos(((a2 ** 2) + (a15 ** 2) - (a345 ** 2)) / (2 * a2 * a15))) - 90
@@ -259,6 +251,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
             theta4 = round(roll_arm.angle() / roll_arm_gear, 2)
 
 
+
         #Find theta6, Inverse Kinematic with quadrants
         if theta32 - pitch > 0 and theta5 != 0:
             theta6 = math.cos(math.radians(pitch)) * math.degrees(math.asin(-math.cos(math.radians(theta32 - pitch)) * math.sin(math.radians(math.cos(math.radians(pitch)) * (theta1 + (theta1_rot * 360) - math.fmod(yaw, 360)))) / math.sin(math.radians(-theta5)))) + \
@@ -280,7 +273,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
             theta6 = round((roll_head_feedb.read() /roll_head_gear) + (round(roll_arm.angle() / roll_arm_gear, 2) / roll_head_gear) - (round((yaw_arm.angle() / yaw_arm_gear) - (round(roll_arm.angle() / roll_arm_gear, 2) / 5), 2) * 4 / roll_head_gear / roll_head_gear), 2) + roll
 
         #To debug print all values
-        #logger.debug(theta1, theta2, theta3, theta4, theta5, theta6, roll, pitch, yaw, theta1_rot, theta4_rot, theta6_rot, theta32, x_pos_fork, y_pos_fork, z_pos_fork)
+        #print(theta1, theta2, theta3, theta4, theta5, theta6, roll, pitch, yaw, theta1_rot, theta4_rot, theta6_rot, theta32, x_pos_fork, y_pos_fork, z_pos_fork)
 
         #check that the values for theta2, theta3 and theta5 are within range of the mechanical capabilities
         possible_angles = "OK"
@@ -300,31 +293,30 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
             next_orientation = [roll, pitch, yaw]
             calc_speed_motors([theta1, theta2, theta3, theta4, theta5, theta6])  
         else:
-            # logger.debug(possible_angles, theta1, theta2, theta3, theta4, theta5, theta6)
+            print(possible_angles, theta1, theta2, theta3, theta4, theta5, theta6)
             ev3.speaker.beep()
 
 
     ##########~~~~~~~~~~CALCULATE SPEED FOR EACH MOTOR TO ARRIVE AT THE SAME TIME~~~~~~~~~~##########
     def calc_speed_motors(new_coor_list):
+        global theta1_rot
         global theta4_rot
         global theta6_rot
         global old_speed
+        global old_orientation
+        global next_orientation
         global actuation_list
         
         #As the robot moves from one quadrant to another the result will shift 360°, this will compensate for axis 4 and 6
-        theta1_rot_times_360 = theta1_rot * 360
-        coor_min_old_theta1_rot = old_coor_list[0] - old_orientation[2] - theta1_rot_times_360
-        coor_min_new = new_coor_list[2] - new_coor_list[1]
-        coor_min_next = new_coor_list[0] - next_orientation[2]
-        if coor_min_old_theta1_rot >= 0 and coor_min_next < 0 and coor_min_new - old_orientation[1] > 0:
+        if old_coor_list[0] - old_orientation[2] - (theta1_rot * 360) >= 0 and new_coor_list[0] - next_orientation[2] < 0 and new_coor_list[2] - new_coor_list[1] - old_orientation[1] > 0:
             theta4_rot -=  1
-        if coor_min_old_theta1_rot < 0 and coor_min_next >= 0 and coor_min_new - old_orientation[1] > 0:
+        if old_coor_list[0] - old_orientation[2] - (theta1_rot * 360) < 0 and new_coor_list[0] - next_orientation[2] >= 0 and new_coor_list[2] - new_coor_list[1] - old_orientation[1] > 0:
             theta4_rot += 1    
-        if old_coor_list[2] - old_coor_list[1] - old_orientation[1] >= 0 and coor_min_new - next_orientation[1]  < 0 and coor_min_next > 0:
+        if old_coor_list[2] - old_coor_list[1] - old_orientation[1] >= 0 and new_coor_list[2] - new_coor_list[1] - next_orientation[1]  < 0 and new_coor_list[0] - next_orientation[2] > 0:
             theta6_rot -= 1
-        if old_coor_list[2] - old_coor_list[1] - old_orientation[1] < 0 and coor_min_new - next_orientation[1] >= 0 and coor_min_next > 0:
+        if old_coor_list[2] - old_coor_list[1] - old_orientation[1] < 0 and new_coor_list[2] - new_coor_list[1] - next_orientation[1] >= 0 and new_coor_list[0] - next_orientation[2] > 0:
             theta6_rot += 1
-        new_coor_list[0] += theta1_rot_times_360
+        new_coor_list[0] += (360 * theta1_rot)
         new_coor_list[3] += (360 * theta4_rot)
         new_coor_list[5] += (360 * theta6_rot)
         
@@ -337,11 +329,10 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         move_coor_list[5] = new_coor_list[5] - old_coor_list[5]
         
         #Save the new orientation as old, preparing for future calculations
-        for i in range(3):
-            old_orientation[i] = next_orientation[i]
+        for i in range(3): old_orientation[i] = next_orientation[i]
 
         #Next line is for debugging, showing time needed to calculate and performing 1 step
-        logger.debug("Looptime {}ms, time to execute previous movement: {}ms".format(timer_movement.time(), max(move_angle_list) / old_speed * 1000))
+        print("Looptime", timer_movement.time(), "Time to execute previous movement", max(move_angle_list) / old_speed * 1000)
         
         #Waiting cycle, calculate the time it takes to perform the previous step and overlap for a smooth movement
         #while timer_movement.time() < max(move_angle_list) / old_speed * 1000 - 250: #-250ms overlap (-300 on 29/01/2021)
@@ -374,6 +365,8 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
     ##########~~~~~~~~~~SEND ACTUAL MOTOR SPEED AND DESIRED POSITION~~~~~~~~~~##########
     def move_all_motors_two():
+        global actuation_list
+
         yaw_base_bt_sp.send(  int(max_speed))
         yaw_base_bt_num.send( int(actuation_list[0] * yaw_base_gear))
         pitch_base.run_target(actuation_list[7], int(actuation_list[1] * pitch_base_gear * th2_switch), then=Stop.COAST, wait=False)
@@ -389,7 +382,6 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         global x_pos_fork
         global y_pos_fork
         global z_pos_fork
-
         yaw_base_angle =   math.radians(round(yaw_base_feedb.read() / yaw_base_gear, 2))
         pitch_base_angle = math.radians(round(pitch_base.angle() / pitch_base_gear * th2_switch, 2) + 90)
         pitch_arm_angle =  math.radians(round(pitch_arm.angle() / pitch_arm_gear * th3_switch, 2))
@@ -425,8 +417,8 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
     ##########~~~~~~~~~~TRACKING 6DOF BY PS4 REMOTE CONTROLLER OUTPUT~~~~~~~~~~##########
     def track_remote():
-        while tracking:
-            # logger.debug(x_remote, y_remote, z_remote, roll_remote, pitch_remote, yaw_remote)
+        while tracking == True:
+            print(x_remote, y_remote, z_remote, roll_remote, pitch_remote, yaw_remote)
             next_pos(int(x_remote), int(y_remote), int(z_remote), int(roll_remote), int(pitch_remote), int(yaw_remote), max_speed) 
 
 
@@ -442,22 +434,15 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     ##########~~~~~~~~~~POSSIBLE MANUAL CONTROL WITH BEACON FOR GOING TO SAFE POSITION FOR HOMING~~~~~~~~~~##########
     # hold LEFT_UP on remote during startup to enter manual calibration mode
     if infra_remote and infra_remote.buttons(1) == [Button.LEFT_UP]:
-        logger.info('Waiting for IR commands...')
         while True:
             if infra_remote.buttons(1) == []:
                 pitch_base.hold()
                 pitch_arm.hold()
-            elif infra_remote.buttons(1) == [Button.LEFT_UP]:
-                pitch_base.run(200 * th2_switch)
-            elif infra_remote.buttons(1) == [Button.LEFT_DOWN]:
-                pitch_base.run(-200 * th2_switch)
-            elif infra_remote.buttons(1) == [Button.RIGHT_UP]:
-                pitch_arm.run(-200 * th3_switch)
-            elif infra_remote.buttons(1) == [Button.RIGHT_DOWN]:
-                pitch_arm.run(200 * th3_switch)
-            elif infra_remote.buttons(1) == [Button.BEACON]:
-                break
-    
+            elif infra_remote.buttons(1) == [Button.LEFT_UP]: pitch_base.run(200 * th2_switch)
+            elif infra_remote.buttons(1) == [Button.LEFT_DOWN]: pitch_base.run(-200 * th2_switch)
+            elif infra_remote.buttons(1) == [Button.RIGHT_UP]: pitch_arm.run(-200 * th3_switch)
+            elif infra_remote.buttons(1) == [Button.RIGHT_DOWN]: pitch_arm.run(200 * th3_switch)
+            elif infra_remote.buttons(1) == [Button.BEACON]: break
     pitch_base.hold()
     pitch_arm.hold()
 
@@ -474,20 +459,20 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
     ##########~~~~~~~~~~EV3 HAS INCREMENTAL ENCODERS IN IT'S MOTORS, SO IT'S NEEDED TO CALIBRATE EVERY STARTUP~~~~~~~~~~##########
     ##########~~~~~~~~~~HOMING THETA3~~~~~~~~~~##########
-    if touch_pitch_base.pressed():          #If theta2 is on his touch sensor, make it go up first to avoid a crash
-        while touch_pitch_base.pressed():
+    if touch_pitch_base.pressed() == True:          #If theta2 is on his touch sensor, make it go up first to avoid a crash
+        while touch_pitch_base.pressed() == True:
             pitch_base.run(-400 * th2_switch)
         wait(3000)
     pitch_base.hold()
 
-    if touch_pitch_arm.pressed():           #If theta3 is pressing its touch sensor, make it move forward until it does not touch anymore
-        while touch_pitch_arm.pressed():
+    if touch_pitch_arm.pressed() == True:           #If theta3 is pressing its touch sensor, make it move forward until it does not touch anymore
+        while touch_pitch_arm.pressed() == True:
             pitch_arm.run(600 * th3_switch)
         wait(100)
         pitch_arm.stop()
         wait(250)
 
-    while not touch_pitch_arm.pressed():       #Homing theta3
+    while touch_pitch_arm.pressed() == False:       #Homing theta3
         pitch_arm.run(-600 * th3_switch)
     pitch_arm.hold()                                #Active brake theta3
     pitch_arm.reset_angle(pitch_arm_zeroing)        #Set motor angle for theta3 to the homing angle
@@ -495,15 +480,15 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     pitch_arm.run_target(800, 0)
 
     ##########~~~~~~~~~~HOMING THETA4~~~~~~~~~~##########
-    if touch_roll_arm.pressed():            #If theta4 is pressing its touch sensor, make it move back until it does not touch anymore
-        while touch_roll_arm.pressed():
+    if touch_roll_arm.pressed() == True:            #If theta4 is pressing its touch sensor, make it move back until it does not touch anymore
+        while touch_roll_arm.pressed() == True:
             roll_arm.run(-200)                      #Turning theta4 will make theta5 and theta6 turn as well
             yaw_arm.run(-80)                        #Turn theta5 at 2.5x smaller speed to avoid a collision
         wait(750)
     roll_arm.stop()                                 #Soft brake theta4
     yaw_arm.stop()                                  #Soft brake theta5
 
-    while not touch_roll_arm.pressed():         #Homing theta4
+    while touch_roll_arm.pressed() != True:         #Homing theta4
         roll_arm.run(600) #### 200
         yaw_arm.run(240) #### 80
     roll_arm.hold()                                 #Active brake theta4
@@ -523,20 +508,19 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
 
     ##########~~~~~~~~~~HOMING THETA2~~~~~~~~~~##########
-    # commands_bt_text.send('Initiate yaw base')   #Send the command for homing theta1
     while commands_bt_text.read() != 'Initiated yaw base':   #Check if theta1 has finished homing
         continue
     yaw_base_bt_num.send(0)                                  #Theta1 go to safe position 0°
     pitch_arm.run_target(800, pitch_arm_full_rot / 8 * th3_switch)                             #Theta3 go to safe position 0°
 
-    if touch_pitch_base.pressed():          #If theta2 is pressing its touch sensor, make it move back until it does not touch anymore
-        while touch_pitch_base.pressed():
+    if touch_pitch_base.pressed() == True:          #If theta2 is pressing its touch sensor, make it move back until it does not touch anymore
+        while touch_pitch_base.pressed() == True:
             pitch_base.run(-800 * th2_switch)
         wait(700)                                   #Time for running backwards
         pitch_base.stop()                           #Soft brake theta2
         wait(250)
 
-    while not touch_pitch_base.pressed():      #Homing theta2
+    while touch_pitch_base.pressed() == False:      #Homing theta2
         pitch_base.run(400 * th2_switch)
     pitch_base.hold()                               #Active brake theta2
     pitch_base.reset_angle(pitch_base_zeroing)      #Set motor angle for theta2 to the homing angle
@@ -548,20 +532,18 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     yaw_arm.run_target(800, - yaw_arm_full_rot / 4 - (360 / 4 / roll_arm_gear * yaw_arm_gear), wait=False) 
     roll_arm.run_target(800, - roll_arm_full_rot / 4)
     pitch_base.run_target(800, - pitch_base_full_rot / 360 * roll_head_zeroing_pitch_base_angle * th2_switch, wait=False)
-    
     while True:
         if pitch_base.angle() > 5 and th2_switch == -1 or pitch_base.angle() < 5 and th2_switch == 1:
             pitch_arm.run_target(800, pitch_arm_full_rot / 8 * th3_switch + th3_switch * ((pitch_arm_full_rot / 360 * roll_head_zeroing_pitch_arm_angle - pitch_arm_full_rot / 8) * (pitch_base.angle() / (pitch_base_full_rot / 360 * roll_head_zeroing_pitch_base_angle))), wait=False)
-        if pitch_base.control.done():       #Wait for the movement to be finished
+        if pitch_base.control.done() == True:       #Wait for the movement to be finished
             break                                   #Break out of the loop
-    
     pitch_arm.run_target(800, pitch_arm_full_rot / 360 * roll_head_zeroing_pitch_arm_angle * th3_switch)
 
     commands_bt_text.send('Initiate roll head')     #Send the command for homing theta6 
     while commands_bt_text.read() != 'Initiated roll head':
         continue                                    #Check if theta6 has finished homing
 
-    logger.debug('roll head calibrated, wait a bit...')
+    print('roll head calibrated, wait a bit...')
     wait(500)
     roll_head_bt_num.send(0)                        #Theta6 go to position 0°
 
@@ -605,16 +587,16 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     # write to disk for later replay_file feature
     def write_positions_to_storage(remote_positions):
         positions_file = 'positions-{}.csv'.format(int(time.time()))
-        with open(positions_file, 'w', encoding='utf-8') as positions_file_handle:
+        with open(positions_file, 'w') as positions_file_handle:
             positions_file_handle.write('#x,y,z,roll,pitch,yaw\n')
             for i in range(remote_positions):
                 positions_file_handle.write('{},{},{},{},{},{}\n'.format(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1]))
 
-        logger.info('Positions saved in file {}'.format(positions_file))
+        print('Positions saved in file {}'.format(positions_file))
 
     def read_positions_from_storage(positions_file):
-        logger.info('Replaying positions from {}...'.format(positions_file))
-        with open(positions_file, 'r', encoding='utf-8') as positions_file_handle:
+        print('Replaying positions from {}...'.format(positions_file))
+        with open(positions_file, 'r') as positions_file_handle:
             for line in positions_file_handle.readlines():
                 if not line.startswith('#'):
                     line_metrics = line.split(',')
@@ -650,14 +632,14 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     if replay_file:
         read_positions_from_storage(replay_file)
     else:
-        logger.debug('Starting remote control mode...')
+        print('Starting remote control mode...')
         sub_track_remote.start()
 
         infile_path = "/dev/input/event4"
         try:
             in_file = open(infile_path, "rb")
         except OSError:
-            logger.debug('Unable to open Wireless Controller using {}'.format(infile_path))
+            print('Unable to open Wireless Controller using {}'.format(infile_path))
             sys.exit(1)
 
         FORMAT = 'llHHI'    
@@ -738,7 +720,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         for i in range(remote_positions):
             next_coordinate_linear(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1], max_speed)
 
-    logger.debug('\nProgram finished, shutting down...\n')
+    print('\nProgram finished, shutting down...\n')
     motor_braking()
     ev3.speaker.beep()
     sys.exit()
@@ -756,13 +738,5 @@ if __name__ == '__main__':
     parser.add_argument('--auto-start', action='store_true', help='Auto start slave brick using SSH')
     parser.add_argument('--slave-name', action='store', default='ev3dev2', help='Name of slave brick to connect using SSH')
     parser.add_argument('--slave-script', action='store', default='Lego-EV3-6DoF/6dof_right_brick_slave.py', help='Path of slave script to start on slave brick using SSH')
-    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-    
-    # setup logging
-    # log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    # handler = logging.StreamHandler(sys.stdout)
-    # handler.setFormatter(log_format)
-    # logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
     sys.exit(main(auto_start=args.auto_start, replay_file=args.replay, slave_name=args.slave_name, slave_script=args.slave_script))

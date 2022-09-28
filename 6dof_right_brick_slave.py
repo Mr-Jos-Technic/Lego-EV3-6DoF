@@ -52,11 +52,15 @@ client.connect(MASTER_BRICK)
 
 
 def move_yaw_base():
+    global yaw_base_bt_num
+    global yaw_base
     while True:
         yaw_base_bt_num.wait_new()
         yaw_base.run_target(yaw_base_bt_sp.read(), yaw_base_bt_num.read(), wait=False)
 
 def move_roll_head():
+    global roll_head_bt_num
+    global roll_head
     while True:
         roll_head_bt_num.wait_new()
         print('received roll head num: {}'.format(roll_head_bt_num.read()))
