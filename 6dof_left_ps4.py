@@ -4,7 +4,7 @@ import math
 import struct
 import sys
 import time
-import logging
+# import logging
 from threading import Thread
 
 import uos
@@ -43,10 +43,22 @@ old_speed = int(max_speed)
 # x_pos_fork = 0
 # y_pos_fork = 0
 # z_pos_fork = 0
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
+y_remote_val = 0
+x_remote_val = 0
+z_remote_val = 0
+pitch_remote_val = 0
+yaw_remote_val = 0
+roll_remote_val = 0
+x_remote = 0
+y_remote = 0
+z_remote = 0
+roll_remote = 0
+pitch_remote = 0
+yaw_remote = 0
 
 
-def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None):
+def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None, step_size=None):
     ##########~~~~~~~~~~HARDWARE CONFIGURATION~~~~~~~~~~##########
     ev3 = EV3Brick()
     #yaw_base = On Right brick Port.B            #Joint number 1(theta1)
@@ -64,7 +76,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     try:
         infra_remote = InfraredSensor(Port.S4)      #OPTIONAL: Infrared sensor for manual movements with a remote
     except OSError:
-        logger.info('no IR sensor present on port S4, running without it...')
+        print('no IR sensor present on port S4, running without it...')
         infra_remote = False
 
     th2_switch = -1  #Switching the direction of the motor for theta2     1/-1
@@ -114,7 +126,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     pitch_arm.control.limits( 800, 3600, 100)   #800, 3600, 100
     roll_arm.control.limits(  500, 3600, 100)   #500, 3600, 100
     yaw_arm.control.limits(   800, 3600, 100)   #800, 3600, 100
-    step = 4          #Distance in mm for each step in Inverse Kinematic mode, lower = more accurate but might start shaking due to slow calculations
+    step = int(step_size)          #Distance in mm for each step in Inverse Kinematic mode, lower = more accurate but might start shaking due to slow calculations
 
     ##########~~~~~~~~~~MAXIMUM ACCELERATION AND MAXIMUM ANGLE TO SAY A MOVEMENT IS FINISHED~~~~~~~~~~##########
     pitch_base.control.target_tolerances(1000, 10)   #Allowed deviation from the target before motion is considered complete. (degrees/second, degrees) (1000, 10)
@@ -135,9 +147,18 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     roll_head_bt_sp = NumericMailbox('roll head speed', server)          #Mailbox for sending theta6 speed
     roll_head_feedb = NumericMailbox('roll head feedback', server)       #Mailbox with feedback from current theta6 angle
 
+    # if we are entering remote control mode, make sure the wireless controller is connected before spending time on calibration
+    infile_path = "/dev/input/event4"
+    if not replay_file:
+        try:
+            uos.stat(infile_path)
+        except OSError:
+            print('Unable to open Wireless Controller using {}'.format(infile_path))
+            sys.exit(1)
+    
     ## auto start script on slave brick if --autoconnect flag is passed
     if auto_start:
-        logger.info('Starting slave script "{}" on host "{}" using SSH...'.format(slave_script, slave_name))
+        print('Starting slave script "{}" on host "{}" using SSH...'.format(slave_script, slave_name))
         with open('/etc/hostname', 'r', encoding='utf-8') as hostname_file:
             master_name = hostname_file.readline().strip()
         uos.system('ssh {} brickrun -r -- pybricks-micropython {} {} &'.format(slave_name, slave_script, master_name))
@@ -205,12 +226,12 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         
         #Send each sub-step XYZ position, orientation and maxspeed
         if sub_steps <= 0:
-            logger.debug("Position too close to previous end-point")
+            print("Position too close to previous end-point")
         else:
             for i in range(-((sub_steps - 1) * step), step, step):
                 next_pos(x_pos - (distance_list[0] / sub_steps) * (sub_steps - step_lineair), y_pos - (distance_list[1] / sub_steps) * (sub_steps - step_lineair), z_pos - (distance_list[2] / sub_steps) * (sub_steps - step_lineair), roll - (step_orientation[0] / sub_steps) * (sub_steps - step_lineair), pitch - (step_orientation[1] / sub_steps) * (sub_steps - step_lineair), yaw - (step_orientation[2] / sub_steps) * (sub_steps - step_lineair), maxspeed)    
                 step_lineair += 1
-                # logger.debug(x_pos - (distance_list[0] / sub_steps) * (sub_steps - step_lineair), y_pos - (distance_list[1] / sub_steps) * (sub_steps - step_lineair), z_pos - (distance_list[2] / sub_steps) * (sub_steps - step_lineair), roll - (step_orientation[0] / sub_steps) * (sub_steps - step_lineair), pitch - (step_orientation[1] / sub_steps) * (sub_steps - step_lineair), yaw - (step_orientation[2] / sub_steps) * (sub_steps - step_lineair), maxspeed)
+                # print(x_pos - (distance_list[0] / sub_steps) * (sub_steps - step_lineair), y_pos - (distance_list[1] / sub_steps) * (sub_steps - step_lineair), z_pos - (distance_list[2] / sub_steps) * (sub_steps - step_lineair), roll - (step_orientation[0] / sub_steps) * (sub_steps - step_lineair), pitch - (step_orientation[1] / sub_steps) * (sub_steps - step_lineair), yaw - (step_orientation[2] / sub_steps) * (sub_steps - step_lineair), maxspeed)
 
 
         old_orientation = [roll, pitch, yaw]
@@ -231,7 +252,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         try:
             theta3 = 180 - math.degrees(math.acos(((a2 ** 2) + (a345 **2) - (a15 ** 2)) / (2 * a2 * a345))) - phi345
         except ValueError:
-            logger.debug('ValueError while calculating theta3 with values: a2 {}, a345 {}, a15 {}, phi345 {}'.format(a2, a345, a15, phi345))
+            print('ValueError while calculating theta3 with values: a2 {}, a345 {}, a15 {}, phi345 {}'.format(a2, a345, a15, phi345))
             return
 
         theta2 = math.degrees(math.asin((z_wrist - a1) / a15)) + math.degrees(math.acos(((a2 ** 2) + (a15 ** 2) - (a345 ** 2)) / (2 * a2 * a15))) - 90
@@ -280,7 +301,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
             theta6 = round((roll_head_feedb.read() /roll_head_gear) + (round(roll_arm.angle() / roll_arm_gear, 2) / roll_head_gear) - (round((yaw_arm.angle() / yaw_arm_gear) - (round(roll_arm.angle() / roll_arm_gear, 2) / 5), 2) * 4 / roll_head_gear / roll_head_gear), 2) + roll
 
         #To debug print all values
-        #logger.debug(theta1, theta2, theta3, theta4, theta5, theta6, roll, pitch, yaw, theta1_rot, theta4_rot, theta6_rot, theta32, x_pos_fork, y_pos_fork, z_pos_fork)
+        #print(theta1, theta2, theta3, theta4, theta5, theta6, roll, pitch, yaw, theta1_rot, theta4_rot, theta6_rot, theta32, x_pos_fork, y_pos_fork, z_pos_fork)
 
         #check that the values for theta2, theta3 and theta5 are within range of the mechanical capabilities
         possible_angles = "OK"
@@ -300,7 +321,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
             next_orientation = [roll, pitch, yaw]
             calc_speed_motors([theta1, theta2, theta3, theta4, theta5, theta6])  
         else:
-            # logger.debug(possible_angles, theta1, theta2, theta3, theta4, theta5, theta6)
+            # print(possible_angles, theta1, theta2, theta3, theta4, theta5, theta6)
             ev3.speaker.beep()
 
 
@@ -341,7 +362,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
             old_orientation[i] = next_orientation[i]
 
         #Next line is for debugging, showing time needed to calculate and performing 1 step
-        logger.debug("Looptime {}ms, time to execute previous movement: {}ms".format(timer_movement.time(), max(move_angle_list) / old_speed * 1000))
+        print("Looptime {}ms, time to execute previous movement: {}ms".format(timer_movement.time(), max(move_angle_list) / old_speed * 1000))
         
         #Waiting cycle, calculate the time it takes to perform the previous step and overlap for a smooth movement
         #while timer_movement.time() < max(move_angle_list) / old_speed * 1000 - 250: #-250ms overlap (-300 on 29/01/2021)
@@ -426,8 +447,24 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     ##########~~~~~~~~~~TRACKING 6DOF BY PS4 REMOTE CONTROLLER OUTPUT~~~~~~~~~~##########
     def track_remote():
         while tracking:
-            # logger.debug(x_remote, y_remote, z_remote, roll_remote, pitch_remote, yaw_remote)
-            next_pos(int(x_remote), int(y_remote), int(z_remote), int(roll_remote), int(pitch_remote), int(yaw_remote), max_speed) 
+            # print(x_remote, y_remote, z_remote, roll_remote, pitch_remote, yaw_remote)
+            global y_remote
+            global x_remote
+            global z_remote
+            global pitch_remote
+            global yaw_remote
+            global roll_remote
+
+            y_remote += y_remote_val
+            x_remote += x_remote_val
+            z_remote += z_remote_val
+            pitch_remote += pitch_remote_val
+            yaw_remote += yaw_remote_val
+            roll_remote += roll_remote_val
+
+            if y_remote_val or x_remote_val or z_remote_val or pitch_remote_val or yaw_remote_val or roll_remote_val:
+                next_pos(int(x_remote), int(y_remote), int(z_remote), int(roll_remote), int(pitch_remote), int(yaw_remote), max_speed)
+            # time.sleep(0.1)
 
 
     ##########~~~~~~~~~~CREATING MULTITHREADS~~~~~~~~~~##########
@@ -442,7 +479,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     ##########~~~~~~~~~~POSSIBLE MANUAL CONTROL WITH BEACON FOR GOING TO SAFE POSITION FOR HOMING~~~~~~~~~~##########
     # hold LEFT_UP on remote during startup to enter manual calibration mode
     if infra_remote and infra_remote.buttons(1) == [Button.LEFT_UP]:
-        logger.info('Waiting for IR commands...')
+        print('Waiting for IR commands...')
         while True:
             if infra_remote.buttons(1) == []:
                 pitch_base.hold()
@@ -561,7 +598,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     while commands_bt_text.read() != 'Initiated roll head':
         continue                                    #Check if theta6 has finished homing
 
-    logger.debug('roll head calibrated, wait a bit...')
+    print('roll head calibrated, wait a bit...')
     wait(500)
     roll_head_bt_num.send(0)                        #Theta6 go to position 0°
 
@@ -610,10 +647,10 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
             for i in range(remote_positions):
                 positions_file_handle.write('{},{},{},{},{},{}\n'.format(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1]))
 
-        logger.info('Positions saved in file {}'.format(positions_file))
+        print('Positions saved in file {}'.format(positions_file))
 
     def read_positions_from_storage(positions_file):
-        logger.info('Replaying positions from {}...'.format(positions_file))
+        print('Replaying positions from {}...'.format(positions_file))
         with open(positions_file, 'r', encoding='utf-8') as positions_file_handle:
             for line in positions_file_handle.readlines():
                 if not line.startswith('#'):
@@ -631,6 +668,11 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     # wait(1000)
 
     find_position()
+    global x_remote
+    global y_remote
+    global z_remote
+    global roll_remote
+    global pitch_remote
     x_remote = x_pos_fork
     y_remote = y_pos_fork
     z_remote = z_pos_fork
@@ -650,19 +692,28 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     if replay_file:
         read_positions_from_storage(replay_file)
     else:
-        logger.debug('Starting remote control mode...')
+        print('Starting remote control mode...')
         sub_track_remote.start()
-
-        infile_path = "/dev/input/event4"
+        
+        global y_remote_val
+        global x_remote_val
+        global z_remote_val
+        global pitch_remote_val
+        global yaw_remote_val
+        global roll_remote_val
+        
         try:
             in_file = open(infile_path, "rb")
         except OSError:
-            logger.error('Unable to open Wireless Controller using {}'.format(infile_path))
+            print('Unable to open Wireless Controller using {}'.format(infile_path))
             sys.exit(1)
 
         FORMAT = 'llHHI'    
         EVENT_SIZE = struct.calcsize(FORMAT)
         event = in_file.read(EVENT_SIZE)
+        DEADZONE_MIN = 118
+        DEADZONE_MAX = 138
+        PADDLE_DEADZONE = 10 
 
         while event:
             (tv_sec, tv_usec, ev_type, code, value) = struct.unpack(FORMAT, event)
@@ -696,6 +747,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
             if ev_type == 1: # A button was pressed or released.
                 if code == 304 and value == 0:
+                    # store position for replay
                     x_list.append(int(x_remote))
                     y_list.append(int(y_remote))
                     z_list.append(int(z_remote))
@@ -709,25 +761,47 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
                     ev3.speaker.beep()
                     tracking = False
                     break
+                elif code == 310 and value == 1:
+                    roll_remote_val = 3
                 elif code == 310 and value == 0:
-                    roll_remote += 3
+                    roll_remote_val = 0
+                elif code == 311 and value == 1:
+                    roll_remote_val = -3
                 elif code == 311 and value == 0:
-                    roll_remote -= 3
+                    roll_remote_val = 0
                 
             elif ev_type == 3: # Stick was moved
-                if code == 0 and (value < 118 or value > 138): # left joystick, x-axis, y+ --- y-
-                    y_remote += scale(value, (0,255), (1, -1))
-                elif code == 1 and (value < 118 or value > 138): # left joystick, y-axis, x+ --- x-
-                    x_remote += scale(value, (0,255), (1, -1))
-                elif code == 2 and value > 10: # l2 paddle,             z+
-                    z_remote += scale(value, (0,255), (0, 1))
-                elif code == 3 and (value < 118 or value > 138): # left joystick, x-axis, yaw left --- yaw right
-                    yaw_remote += scale(value, (0,255), (1, -1))
-                elif code == 4 and (value < 118 or value > 138): # Righ stick vertical    pitch up --- pitch down
-                    pitch_remote += scale(value, (0,255), (1, -1))
-                elif code == 5 and value > 10: # r2 paddle,             z-
-                    z_remote -= scale(value, (0,255), (0, 1))
-
+                if code == 0: # left joystick, x-axis, y+ --- y-
+                    if value < DEADZONE_MIN or value > DEADZONE_MAX:
+                        y_remote_val = scale(value, (0,255), (4, -4))
+                    else:
+                        y_remote_val = 0
+                elif code == 1: # left joystick, y-axis, x+ --- x-
+                    if value < DEADZONE_MIN or value > DEADZONE_MAX:
+                        x_remote_val = scale(value, (0,255), (4, -4))
+                    else:
+                        x_remote_val = 0
+                elif code == 2: # l2 paddle,             z+
+                    if value > PADDLE_DEADZONE:
+                        z_remote_val = scale(value, (0,255), (0, 4))
+                    else:
+                        z_remote_val = 0
+                elif code == 3: # left joystick, x-axis, yaw left --- yaw right
+                    if value < DEADZONE_MIN or value > DEADZONE_MAX:
+                        yaw_remote_val = scale(value, (0,255), (4, -4))
+                    else:
+                        yaw_remote_val = 0
+                elif code == 4: # Righ stick vertical    pitch up --- pitch down
+                    if value < DEADZONE_MIN or value > DEADZONE_MAX:
+                        pitch_remote_val = scale(value, (0,255), (4, -4))
+                    else:
+                        pitch_remote_val = 0
+                elif code == 5: # r2 paddle,             z-
+                    if value > PADDLE_DEADZONE:
+                        z_remote_val = -(scale(value, (0,255), (0, 4)))
+                    else:
+                        z_remote_val = 0
+            
             event = in_file.read(EVENT_SIZE)
 
         motor_braking()
@@ -738,7 +812,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         for i in range(remote_positions):
             next_coordinate_linear(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1], max_speed)
 
-    logger.debug('\nProgram finished, shutting down...\n')
+    print('\nProgram finished, shutting down...\n')
     motor_braking()
     ev3.speaker.beep()
     sys.exit()
@@ -756,7 +830,8 @@ if __name__ == '__main__':
     parser.add_argument('--auto-start', action='store_true', help='Auto start slave brick using SSH')
     parser.add_argument('--slave-name', action='store', default='ev3dev2', help='Name of slave brick to connect using SSH')
     parser.add_argument('--slave-script', action='store', default='Lego-EV3-6DoF/6dof_right_brick_slave.py', help='Path of slave script to start on slave brick using SSH')
-    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--step-size', action='store', default='4', help='Use a different step size')
+    # parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     
     # setup logging
@@ -764,5 +839,5 @@ if __name__ == '__main__':
     # handler = logging.StreamHandler(sys.stdout)
     # handler.setFormatter(log_format)
     # logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
-    sys.exit(main(auto_start=args.auto_start, replay_file=args.replay, slave_name=args.slave_name, slave_script=args.slave_script))
+    # logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
+    sys.exit(main(auto_start=args.auto_start, replay_file=args.replay, slave_name=args.slave_name, slave_script=args.slave_script, step_size=args.step_size))
