@@ -59,8 +59,8 @@ def move_yaw_base():
 def move_roll_head():
     while True:
         roll_head_bt_num.wait_new()
-        print('received roll head num: {}'.format(roll_head_bt_num.read()))
-        print('current angle: {}'.format(roll_head.angle()))
+        # print('received roll head num: {}'.format(roll_head_bt_num.read()))
+        # print('current angle: {}'.format(roll_head.angle()))
         roll_head.run_target(roll_head_bt_sp.read(), roll_head_bt_num.read(), wait=False)
 
 def control_check():
@@ -116,12 +116,12 @@ while color_roll_head.color() != Color.RED:
     roll_head.run(-600)
 
 if color_roll_head.color() != Color.RED:
-    print('DEBUG1: not on red as expected?!')
+    print('SLAVE> DEBUG1: not on red as expected?!')
 
 wait(400)  # determine optimal number for this delay, or figure out how to make it adjust itself correctly
 roll_head.hold()
 if color_roll_head.color() != Color.RED:
-    print('DEBUG2: not on red as expected?!')
+    print('SLAVE> DEBUG2: not on red as expected?!')
 
 roll_head.reset_angle(roll_head_bt_zeroing.read())
 
@@ -135,7 +135,7 @@ while True:
     try:
         control_check()
     except OSError:
-        print('Looks like we lost connection, shutting down slave...')
+        print('SLAVE> Lost connection to master brick, shutting down...')
         sys.exit(0)
 
     wait(10)

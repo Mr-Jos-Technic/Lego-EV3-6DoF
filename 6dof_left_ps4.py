@@ -56,7 +56,6 @@ z_remote = 0
 roll_remote = 0
 pitch_remote = 0
 yaw_remote = 0
-start_move_all_motors = 0
 
 def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None, step_size=None):
     ##########~~~~~~~~~~HARDWARE CONFIGURATION~~~~~~~~~~##########
@@ -333,7 +332,6 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         global theta6_rot
         global old_speed
         global actuation_list
-        global start_move_all_motors
 
         #As the robot moves from one quadrant to another the result will shift 360°, this will compensate for axis 4 and 6
         theta1_rot_times_360 = theta1_rot * 360
@@ -396,26 +394,17 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
             actuation_list = [new_coor_list[0], new_coor_list[1], new_coor_list[2], new_coor_list[3], new_coor_list[4], new_coor_list[5], \
     speed_list[0], speed_list[1], speed_list[2], speed_list[3], speed_list[4], speed_list[5]]
-            start_move_all_motors += 1
+            sub_move_all_motors.start()
 
 
     ##########~~~~~~~~~~SEND ACTUAL MOTOR SPEED AND DESIRED POSITION~~~~~~~~~~##########
     def move_all_motors():
-        global start_move_all_motors
-        last_start_move_all_motors = 0
-        while True:
-            while not start_move_all_motors or start_move_all_motors <= last_start_move_all_motors:
-                wait(50)
-            
-            last_move_all_motors = start_move_all_motors
-            yaw_base_bt_sp.send(  int(max_speed))
-            yaw_base_bt_num.send( int(actuation_list[0] * yaw_base_gear))
-            pitch_base.run_target(actuation_list[7], int(actuation_list[1] * pitch_base_gear * th2_switch), then=Stop.COAST, wait=False)
-            pitch_arm.run_target( actuation_list[8], int(actuation_list[2] * pitch_arm_gear *  th3_switch), then=Stop.COAST, wait=False)
-            roll_arm.run_target(  actuation_list[9], int(actuation_list[3] * roll_arm_gear), then=Stop.COAST, wait=False)
-            yaw_arm.run_target(   actuation_list[10], int((actuation_list[4] * yaw_arm_gear) + (actuation_list[3] / roll_arm_gear * yaw_arm_gear)), then=Stop.COAST, wait=False)
-            roll_head_bt_sp.send( int(max_speed * 1.5))
-            roll_head_bt_num.send(int((actuation_list[5] * roll_head_gear) - (actuation_list[3] * 1) + (actuation_list[4] * 4 / roll_head_gear)))
+        yaw_base_bt_num.send( int(actuation_list[0] * yaw_base_gear))
+        pitch_base.run_target(actuation_list[7], int(actuation_list[1] * pitch_base_gear * th2_switch), then=Stop.COAST, wait=False)
+        pitch_arm.run_target( actuation_list[8], int(actuation_list[2] * pitch_arm_gear *  th3_switch), then=Stop.COAST, wait=False)
+        roll_arm.run_target(  actuation_list[9], int(actuation_list[3] * roll_arm_gear), then=Stop.COAST, wait=False)
+        yaw_arm.run_target(   actuation_list[10], int((actuation_list[4] * yaw_arm_gear) + (actuation_list[3] / roll_arm_gear * yaw_arm_gear)), then=Stop.COAST, wait=False)
+        roll_head_bt_num.send(int((actuation_list[5] * roll_head_gear) - (actuation_list[3] * 1) + (actuation_list[4] * 4 / roll_head_gear)))
 
 
     ##########~~~~~~~~~~FORWARD KINEMATICS FOR FINDING REALTIME XYZ POSITION~~~~~~~~~~##########
@@ -482,7 +471,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     ##########~~~~~~~~~~CREATING MULTITHREADS~~~~~~~~~~##########
     sub_track_remote = Thread(target=track_remote)
     sub_move_all_motors = Thread(target=move_all_motors)
-    sub_move_all_motors.start()
+
 
     ##########~~~~~~~~~~WAIT UNTIL (1) BLUETOOTH DEVICE IS CONNECTED~~~~~~~~~~##########
     print('Waiting for BT connection...')
@@ -614,6 +603,11 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
     print('roll head calibrated, wait a bit...')
     wait(500)
+
+    # moved from move_all_motors thread to reduce bluetooth comms overhead
+    yaw_base_bt_sp.send(  int(max_speed))
+    roll_head_bt_sp.send( int(max_speed * 1.5))
+
     roll_head_bt_num.send(0)                        #Theta6 go to position 0°
 
 
@@ -662,6 +656,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
                 positions_file_handle.write('{},{},{},{},{},{}\n'.format(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1]))
 
         print('Positions saved in file {}'.format(positions_file))
+        return positions_file
 
     def read_positions_from_storage(positions_file):
         print('Replaying positions from {}...'.format(positions_file))
@@ -670,7 +665,9 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
                 if not line.startswith('#'):
                     line_metrics = line.split(',')
                     next_coordinate_linear(int(line_metrics[0]), int(line_metrics[1]), int(line_metrics[2]), int(line_metrics[3]), int(line_metrics[4]), int(line_metrics[5]), max_speed)
+                    ev3.light.on(Color.GREEN)
                     wait(1000)
+                    ev3.light.on(Color.ORANGE)
 
 
     ##########~~~~~~~~~~PS4 CONTROL FOR TEACHING AND STARTING PROGRAM~~~~~~~~~~##########
@@ -707,7 +704,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     if replay_file:
         read_positions_from_storage(replay_file)
     else:
-        print('Starting remote control mode...')
+        print('Entering remote control mode...')
         sub_track_remote.start()
         
         global y_remote_val
@@ -728,8 +725,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         event = in_file.read(EVENT_SIZE)
         DEADZONE_MIN = 118
         DEADZONE_MAX = 138
-        PADDLE_DEADZONE = 10 
-
+        PADDLE_DEADZONE = 10
         while event:
             (tv_sec, tv_usec, ev_type, code, value) = struct.unpack(FORMAT, event)
             
@@ -824,12 +820,16 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         motor_braking()
         in_file.close()
 
-        write_positions_to_storage(remote_positions)
+        new_positions_file = write_positions_to_storage(remote_positions)
 
         for i in range(remote_positions):
             next_coordinate_linear(x_list[i+1], y_list[i+1], z_list[i+1], roll_list[i+1], pitch_list[i+1], yaw_list[i+1], max_speed)
 
+    if new_positions_file:
+        print('\nPositions saved in: {}\n'.format(new_positions_file))
+
     print('\nProgram finished, shutting down...\n')
+    
     motor_braking()
     ev3.speaker.beep()
     sys.exit()
