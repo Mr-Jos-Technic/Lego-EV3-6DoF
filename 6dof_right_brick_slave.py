@@ -105,19 +105,23 @@ commands_bt_text.send('Initiated yaw base')
 while commands_bt_text.read() != 'Initiate roll head':
     wait(100)
 
-
 # already on red, back off a bit for clean calibration
-while color_roll_head.color() == Color.RED:
-    roll_head.run(1400)
+if color_roll_head.color() == Color.RED:
+    while color_roll_head.color() == Color.RED:
+        roll_head.run(1400)
     wait(200)
 
 # start calibrating move
-roll_head.run(-600)
 while color_roll_head.color() != Color.RED:
-    wait(5)
+    roll_head.run(-600)
 
-wait(400)
+if color_roll_head.color() != Color.RED:
+    print('DEBUG1: not on red as expected?!')
+
+wait(400)  # determine optimal number for this delay, or figure out how to make it adjust itself correctly
 roll_head.hold()
+if color_roll_head.color() != Color.RED:
+    print('DEBUG2: not on red as expected?!')
 
 roll_head.reset_angle(roll_head_bt_zeroing.read())
 

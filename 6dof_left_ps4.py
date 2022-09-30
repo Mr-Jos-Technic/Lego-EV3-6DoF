@@ -40,9 +40,9 @@ theta1_rot = 0
 theta4_rot = 0
 theta6_rot = 0
 old_speed = int(max_speed)
-# x_pos_fork = 0
-# y_pos_fork = 0
-# z_pos_fork = 0
+x_pos_fork = 0
+y_pos_fork = 0
+z_pos_fork = 0
 # logger = logging.getLogger(__name__)
 y_remote_val = 0
 x_remote_val = 0
@@ -56,7 +56,7 @@ z_remote = 0
 roll_remote = 0
 pitch_remote = 0
 yaw_remote = 0
-
+start_move_all_motors = 0
 
 def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None, step_size=None):
     ##########~~~~~~~~~~HARDWARE CONFIGURATION~~~~~~~~~~##########
@@ -75,6 +75,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     #color_roll_head = On Right brick Port.S2    #Color sensor at the front left side for homing: theta6
     try:
         infra_remote = InfraredSensor(Port.S4)      #OPTIONAL: Infrared sensor for manual movements with a remote
+        print('Detected Infrared Sensor, hold LEFT_UP to enter manual calibration mode')
     except OSError:
         print('no IR sensor present on port S4, running without it...')
         infra_remote = False
@@ -152,6 +153,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     if not replay_file:
         try:
             uos.stat(infile_path)
+            print('Detected Wireless Controller')
         except OSError:
             print('Unable to open Wireless Controller using {}'.format(infile_path))
             sys.exit(1)
@@ -331,7 +333,8 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         global theta6_rot
         global old_speed
         global actuation_list
-        
+        global start_move_all_motors
+
         #As the robot moves from one quadrant to another the result will shift 360°, this will compensate for axis 4 and 6
         theta1_rot_times_360 = theta1_rot * 360
         coor_min_old_theta1_rot = old_coor_list[0] - old_orientation[2] - theta1_rot_times_360
@@ -342,8 +345,10 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         if coor_min_old_theta1_rot < 0 and coor_min_next >= 0 and coor_min_new - old_orientation[1] > 0:
             theta4_rot += 1    
         if old_coor_list[2] - old_coor_list[1] - old_orientation[1] >= 0 and coor_min_new - next_orientation[1]  < 0 and coor_min_next > 0:
+            print('adjusting theta6 rot -= 1')
             theta6_rot -= 1
         if old_coor_list[2] - old_coor_list[1] - old_orientation[1] < 0 and coor_min_new - next_orientation[1] >= 0 and coor_min_next > 0:
+            print('adjusting theta6 rot += 1')
             theta6_rot += 1
         new_coor_list[0] += theta1_rot_times_360
         new_coor_list[3] += (360 * theta4_rot)
@@ -365,8 +370,9 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
         print("Looptime {}ms, time to execute previous movement: {}ms".format(timer_movement.time(), max(move_angle_list) / old_speed * 1000))
         
         #Waiting cycle, calculate the time it takes to perform the previous step and overlap for a smooth movement
-        #while timer_movement.time() < max(move_angle_list) / old_speed * 1000 - 250: #-250ms overlap (-300 on 29/01/2021)
-        #    continue
+        while timer_movement.time() < max(move_angle_list) / old_speed * 1000 - 250: #-250ms overlap (-300 on 29/01/2021)
+            wait(10)
+        
         timer_movement.reset()       #Reset the timer to 0
         old_speed = int(max_speed)   #Save current step speed as old speed
 
@@ -390,19 +396,26 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
             actuation_list = [new_coor_list[0], new_coor_list[1], new_coor_list[2], new_coor_list[3], new_coor_list[4], new_coor_list[5], \
     speed_list[0], speed_list[1], speed_list[2], speed_list[3], speed_list[4], speed_list[5]]
-            sub_move_all_motors.start()
+            start_move_all_motors += 1
 
 
     ##########~~~~~~~~~~SEND ACTUAL MOTOR SPEED AND DESIRED POSITION~~~~~~~~~~##########
-    def move_all_motors_two():
-        yaw_base_bt_sp.send(  int(max_speed))
-        yaw_base_bt_num.send( int(actuation_list[0] * yaw_base_gear))
-        pitch_base.run_target(actuation_list[7], int(actuation_list[1] * pitch_base_gear * th2_switch), then=Stop.COAST, wait=False)
-        pitch_arm.run_target( actuation_list[8], int(actuation_list[2] * pitch_arm_gear *  th3_switch), then=Stop.COAST, wait=False)
-        roll_arm.run_target(  actuation_list[9], int(actuation_list[3] * roll_arm_gear), then=Stop.COAST, wait=False)
-        yaw_arm.run_target(   actuation_list[10], int((actuation_list[4] * yaw_arm_gear) + (actuation_list[3] / roll_arm_gear * yaw_arm_gear)), then=Stop.COAST, wait=False)
-        roll_head_bt_sp.send( int(max_speed * 1.5))
-        roll_head_bt_num.send(int((actuation_list[5] * roll_head_gear) - (actuation_list[3] * 1) + (actuation_list[4] * 4 / roll_head_gear)))
+    def move_all_motors():
+        global start_move_all_motors
+        last_start_move_all_motors = 0
+        while True:
+            while not start_move_all_motors or start_move_all_motors <= last_start_move_all_motors:
+                wait(50)
+            
+            last_move_all_motors = start_move_all_motors
+            yaw_base_bt_sp.send(  int(max_speed))
+            yaw_base_bt_num.send( int(actuation_list[0] * yaw_base_gear))
+            pitch_base.run_target(actuation_list[7], int(actuation_list[1] * pitch_base_gear * th2_switch), then=Stop.COAST, wait=False)
+            pitch_arm.run_target( actuation_list[8], int(actuation_list[2] * pitch_arm_gear *  th3_switch), then=Stop.COAST, wait=False)
+            roll_arm.run_target(  actuation_list[9], int(actuation_list[3] * roll_arm_gear), then=Stop.COAST, wait=False)
+            yaw_arm.run_target(   actuation_list[10], int((actuation_list[4] * yaw_arm_gear) + (actuation_list[3] / roll_arm_gear * yaw_arm_gear)), then=Stop.COAST, wait=False)
+            roll_head_bt_sp.send( int(max_speed * 1.5))
+            roll_head_bt_num.send(int((actuation_list[5] * roll_head_gear) - (actuation_list[3] * 1) + (actuation_list[4] * 4 / roll_head_gear)))
 
 
     ##########~~~~~~~~~~FORWARD KINEMATICS FOR FINDING REALTIME XYZ POSITION~~~~~~~~~~##########
@@ -464,14 +477,15 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
 
             if y_remote_val or x_remote_val or z_remote_val or pitch_remote_val or yaw_remote_val or roll_remote_val:
                 next_pos(int(x_remote), int(y_remote), int(z_remote), int(roll_remote), int(pitch_remote), int(yaw_remote), max_speed)
-            # time.sleep(0.1)
 
 
     ##########~~~~~~~~~~CREATING MULTITHREADS~~~~~~~~~~##########
     sub_track_remote = Thread(target=track_remote)
-    sub_move_all_motors = Thread(target=move_all_motors_two)
+    sub_move_all_motors = Thread(target=move_all_motors)
+    sub_move_all_motors.start()
 
     ##########~~~~~~~~~~WAIT UNTIL (1) BLUETOOTH DEVICE IS CONNECTED~~~~~~~~~~##########
+    print('Waiting for BT connection...')
     server.wait_for_connection(1)   #Always start this server-brick first. Then start the slave-brick, or it will timeout
     #ev3.speaker.say("Bluetooth connected")   #Make the brick talk (NOT USED)
 
@@ -479,7 +493,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     ##########~~~~~~~~~~POSSIBLE MANUAL CONTROL WITH BEACON FOR GOING TO SAFE POSITION FOR HOMING~~~~~~~~~~##########
     # hold LEFT_UP on remote during startup to enter manual calibration mode
     if infra_remote and infra_remote.buttons(1) == [Button.LEFT_UP]:
-        print('Waiting for IR commands...')
+        print('Waiting for IR commands (press beacon button to resume auto calibration)...')
         while True:
             if infra_remote.buttons(1) == []:
                 pitch_base.hold()
@@ -673,6 +687,7 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
     global z_remote
     global roll_remote
     global pitch_remote
+    global yaw_remote
     x_remote = x_pos_fork
     y_remote = y_pos_fork
     z_remote = z_pos_fork
@@ -748,6 +763,8 @@ def main(auto_start=False, replay_file=False, slave_name=None, slave_script=None
             if ev_type == 1: # A button was pressed or released.
                 if code == 304 and value == 0:
                     # store position for replay
+                    ev3.speaker.beep()
+                    wait(1000)  # allow system to settle, maybe it helps in accuracy?
                     x_list.append(int(x_remote))
                     y_list.append(int(y_remote))
                     z_list.append(int(z_remote))
