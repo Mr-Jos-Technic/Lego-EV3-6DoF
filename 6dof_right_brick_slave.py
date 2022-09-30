@@ -115,13 +115,13 @@ if color_roll_head.color() == Color.RED:
 while color_roll_head.color() != Color.RED:
     roll_head.run(-600)
 
-if color_roll_head.color() != Color.RED:
-    print('SLAVE> DEBUG1: not on red as expected?!')
+# if color_roll_head.color() != Color.RED:
+#     print('SLAVE> DEBUG1: not on red as expected?!')
 
-wait(400)  # determine optimal number for this delay, or figure out how to make it adjust itself correctly
+wait(400)  # @TODO determine optimal number for this delay, or figure out how to make it adjust itself correctly
 roll_head.hold()
-if color_roll_head.color() != Color.RED:
-    print('SLAVE> DEBUG2: not on red as expected?!')
+# if color_roll_head.color() != Color.RED:
+#     print('SLAVE> DEBUG2: not on red as expected?!')
 
 roll_head.reset_angle(roll_head_bt_zeroing.read())
 

@@ -4,7 +4,6 @@ import math
 import struct
 import sys
 import time
-# import logging
 from threading import Thread
 
 import uos
@@ -43,7 +42,6 @@ old_speed = int(max_speed)
 x_pos_fork = 0
 y_pos_fork = 0
 z_pos_fork = 0
-# logger = logging.getLogger(__name__)
 y_remote_val = 0
 x_remote_val = 0
 z_remote_val = 0
@@ -848,13 +846,6 @@ if __name__ == '__main__':
     parser.add_argument('--slave-name', action='store', default='ev3dev2', help='Name of slave brick to connect using SSH')
     parser.add_argument('--slave-script', action='store', default='Lego-EV3-6DoF/6dof_right_brick_slave.py', help='Path of slave script to start on slave brick using SSH')
     parser.add_argument('--step-size', action='store', default='4', help='Use a different step size')
-    # parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     
-    # setup logging
-    # log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    # handler = logging.StreamHandler(sys.stdout)
-    # handler.setFormatter(log_format)
-    # logger.addHandler(handler)
-    # logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
     sys.exit(main(auto_start=args.auto_start, replay_file=args.replay, slave_name=args.slave_name, slave_script=args.slave_script, step_size=args.step_size))
